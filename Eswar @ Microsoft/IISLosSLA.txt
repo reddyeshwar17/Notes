@@ -1,0 +1,53 @@
+set nocount on
+set quoted_identifier on
+
+declare @targetdatehour datetime,@targetdate datetime,@targethour datetime,@nextdatehour datetime,@currentutcdate datetime,@currentsladate datetime
+select @targetdatehour = dateadd(hour,1,max(created)),@nextdatehour = dateadd(hour,2,max(created)) from dbo.scmsla where MetricName='Availability'
+ 
+if @targetdatehour is null 
+begin
+select @targetdatehour = datetimefromparts(datepart(year,min(date)),datepart(month,min(date)),datepart(day,min(date)),0,0,0,0) from dbo.IISLog
+select @nextdatehour = dateadd(hour,1,@targetdatehour)
+end
+select @currentutcdate= CONVERT (datetime, GETDATE())
+select @currentsladate=[created] from dbo.Test where MetricName='Availability' 
+if @currentsladate is null
+                      BEGIN
+                             SET @currentsladate = @targetdatehour
+                      END
+while exists (select * from IISLog where [date] = DATETIMEFROMPARTS(datepart(year,@targetdatehour),datepart(month,@targetdatehour),datepart(day,@targetdatehour),0,0,0,0) and @currentsladate<@currentutcdate and ([time] <= DATEADD(MINUTE,15,DATETIMEFROMPARTS(datepart(year,@targetdatehour),1,1,datepart(hour,@targetdatehour),0,0,0)) or [time] >= DATEADD(MINUTE,15,DATETIMEFROMPARTS(datepart(year,@targetdatehour),1,1,datepart(hour,@targetdatehour),0,0,0) )))
+begin
+
+select @targetdate = DATETIMEFROMPARTS(datepart(year,@targetdatehour),datepart(month,@targetdatehour),datepart(day,@targetdatehour),0,0,0,0)
+select @targethour = DATETIMEFROMPARTS(datepart(year,@targetdatehour),1,1,datepart(hour,@targetdatehour),0,0,0)
+
+insert dbo.Test
+select 
+	'Availability' [MetricName],
+	case 
+		when csUriStem like '/services/scmasset.svc/%' then 'API'
+		when csUriStem = '/' then 'UI'
+		end as [Scenario],
+	COUNT_BIG(*) [TotalRequests],
+	sum( case when scStatus like '2%' or scStatus like '3%' then 1 else 0 end ) as [SuccessRequests],
+	sum( case when scStatus in ('500','503') then 1 else 0 end ) as [FailedRequests],
+	dateadd(hour,datediff(hour,0,[utcTimestamp]),0)[Created]
+from 
+	[dbo].[IISLog]
+where 
+	[date] = @targetdate
+	and [time] between @targethour and dateadd(second,3599,@targethour)
+	and (scStatus like '2%' or scStatus like '3%' or scStatus in ('500','503'))
+	and (csUriStem like '/services/scmasset.svc/%' or csUriStem = '/')
+group by 
+	dateadd(hour,datediff(hour,0,[utcTimestamp]),0),
+	case 
+		when csUriStem like '/services/scmasset.svc/%' then 'API'
+		when csUriStem = '/' then 'UI'
+		end
+order by [Created],[Scenario] 
+
+select @targetdatehour = dateadd(hour,1,max(created)),@nextdatehour = dateadd(hour,2,max(created)) from dbo.Test where MetricName='Availability'
+
+end
+

@@ -1,0 +1,187 @@
+SET NOCOUNT ON
+SET QUOTED_IDENTIFIER ON
+
+DECLARE @targetdatehour datetime,
+        @nextdatehour datetime,
+        @currentutcdate datetime,
+        @currentsladate datetime--, @targettimehour datetime
+DECLARE @serverList varchar(8000)
+DECLARE @URL varchar(1000)
+DECLARE @pos int
+DECLARE @len int
+DECLARE @serverValue varchar(8000)
+DECLARE @ROWCOUNT int,
+        @previousCount int,
+        @currentCount int
+
+SET @serverList = ('TEST1,TEST2---,')
+SET @pos = 0
+SET @len = 0
+
+WHILE CHARINDEX(',', @serverList, @pos + 1) > 0
+BEGIN
+  SET @len = CHARINDEX(',', @serverList, @pos + 1) - @pos
+  SET @serverValue = SUBSTRING(@serverList, @pos, @len)
+
+  SELECT
+    @targetdatehour = DATEADD(HOUR, 1, MAX(created)),
+    @nextdatehour = DATEADD(HOUR, 2, MAX(created))
+  FROM dbo.Test
+  WHERE MetricName = 'Availability'
+  AND ServerName = @serverValue
+  IF @targetdatehour IS NULL
+  BEGIN
+    SELECT
+      @targetdatehour = DATEADD(HOUR, 1, datetimefromparts(DATEPART(YEAR, MIN([RequestStartDateTime])), DATEPART(MONTH, MIN([RequestStartDateTime])), DATEPART(DAY, MIN([RequestStartDateTime])), DATEPART(HOUR, MIN([RequestStartDateTime])), DATEPART(MINUTE, MIN([RequestStartDateTime])), 0, 0))
+    FROM dbo.RawTable
+    WHERE Server = @serverValue
+  END
+
+  SELECT
+    @currentutcdate = CONVERT(datetime, GETDATE())
+  SELECT
+    @currentsladate = [created]
+  FROM dbo.Test
+  WHERE MetricName = 'Availability'
+  AND ServerName = @serverValue
+
+  IF @currentsladate IS NULL
+  BEGIN
+    SET @currentsladate = @targetdatehour
+  END
+  WHILE (SELECT
+      COUNT(1)
+    FROM RawTable
+    WHERE [server] = @serverValue
+    AND @currentsladate < @currentutcdate
+    AND datetimefromparts(DATEPART(YEAR, [RequestStartDateTime]), DATEPART(MONTH, [RequestStartDateTime]), DATEPART(DAY, [RequestStartDateTime]), DATEPART(HOUR, [RequestStartDateTime]), DATEPART(MINUTE, [RequestStartDateTime]), 0, 0) BETWEEN
+    datetimefromparts(DATEPART(YEAR, @targetdatehour), DATEPART(MONTH, @targetdatehour), DATEPART(DAY, @targetdatehour), DATEPART(HOUR, @targetdatehour), DATEPART(MINUTE, @targetdatehour), 0, 0)
+    AND DATEADD(HOUR, 1, datetimefromparts(DATEPART(YEAR, @targetdatehour), DATEPART(MONTH, @targetdatehour), DATEPART(DAY, @targetdatehour), DATEPART(HOUR, @targetdatehour), DATEPART(MINUTE, @targetdatehour), 0, 0))
+    --and URL not like '%ALMGetUserDefaultDataCenter%' and URL not like '%ALMCheckDataCenter%'
+    )
+    = 0
+  BEGIN
+
+    SELECT
+      @targetdatehour = DATEADD(HOUR, 1, @targetdatehour)  
+    IF DATEDIFF(DAY, @currentutcdate, @targetdatehour) >= 0	 
+        BREAK
+   ELSE 
+    CONTINUE
+  END
+
+  WHILE EXISTS (SELECT
+      1
+    FROM RawTable
+    WHERE [server] = @serverValue
+    AND @currentsladate < @currentutcdate
+    AND datetimefromparts(DATEPART(YEAR, [RequestStartDateTime]), DATEPART(MONTH, [RequestStartDateTime]), DATEPART(DAY, [RequestStartDateTime]), DATEPART(HOUR, [RequestStartDateTime]), DATEPART(MINUTE, [RequestStartDateTime]), 0, 0) BETWEEN
+    datetimefromparts(DATEPART(YEAR, @targetdatehour), DATEPART(MONTH, @targetdatehour), DATEPART(DAY, @targetdatehour), DATEPART(HOUR, @targetdatehour), DATEPART(MINUTE, @targetdatehour), 0, 0)
+    AND DATEADD(HOUR, 1, datetimefromparts(DATEPART(YEAR, @targetdatehour), DATEPART(MONTH, @targetdatehour), DATEPART(DAY, @targetdatehour), DATEPART(HOUR, @targetdatehour), DATEPART(MINUTE, @targetdatehour), 0, 0))
+    --and URL not like '%ALMGetUserDefaultDataCenter%' and URL not like '%ALMCheckDataCenter%'
+    )
+  BEGIN
+    SELECT
+      @previousCount = COUNT(id)
+    FROM Test
+    INSERT dbo.Test
+      SELECT
+        'Availability' [MetricName],
+        REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)),
+        CASE
+          WHEN REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'GetFeedbackDetail' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'UpdateRMAFileExport' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'UpdateRMAFeedback' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'GetSparesStatus' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'GetColocationBreakFix' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'SparesUsageBeakfix' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'SparesUsageNotification' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'SparesSignout' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'GetInventoryLocation' THEN 'GDCO'
+          WHEN REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'GetAssetDetailFromPackingSlip' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'ALMGetUserDefaultDataCenter' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'ALMCheckDataCenter' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'ALMCheckStatusForPost' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'ALMSearchBasedOnFilterCondtion' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'ALMCancel' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'ALMPost' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'ALMCreate' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'ALMValidateAsset' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'GetItemsForVendorPart' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'GetEnvironments' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'GetVendors' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'GetPropertyDimensions' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'GetUserWarehouse' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'GetUserRoleDetails' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'GetCarriers' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'RefreshAsset' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'GetItemDetails' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'CreateReceivingEmailFile' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'PostReceiptJson' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'PostReceipt' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'ValidateAsset' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'GetAllBomDetails' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'GetBomDetails' OR
+            REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)) = 'GetOrderDetails' THEN 'MSAsset'
+          ELSE 'Others'
+        END AS Tenant,
+        COUNT_BIG(*) [TotalRequests],
+        SUM(CASE
+          WHEN Success = 'Success' THEN 1
+          ELSE 0
+        END) AS [SuccessRequests],
+        SUM(CASE
+          WHEN FailedRequest = 'Failed' THEN 1
+          ELSE 0
+        END) AS [FailedRequests],
+        DATEADD(HOUR, DATEDIFF(HOUR, 0, [RequestStartDateTime]), 0) [Created],
+
+        [Server] = @serverValue,
+        [MethodType] = REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1)),
+        MAX(TimeTaken),
+        MIN(TimeTaken),
+        MIN(MnMxTimetaken),
+        MAX(MnMxTimetaken),
+        AVG(MnMxTimetaken)
+      FROM [dbo].[RawTable]
+      WHERE datetimefromparts(DATEPART(YEAR, [RequestStartDateTime]), DATEPART(MONTH, [RequestStartDateTime]), DATEPART(DAY, [RequestStartDateTime]), DATEPART(HOUR, [RequestStartDateTime]), DATEPART(MINUTE, [RequestStartDateTime]), 0, 0) BETWEEN
+      datetimefromparts(DATEPART(YEAR, @targetdatehour), DATEPART(MONTH, @targetdatehour), DATEPART(DAY, @targetdatehour), DATEPART(HOUR, @targetdatehour), DATEPART(MINUTE, @targetdatehour), 0, 0)
+      AND DATEADD(HOUR, 1, datetimefromparts(DATEPART(YEAR, @targetdatehour), DATEPART(MONTH, @targetdatehour), DATEPART(DAY, @targetdatehour), DATEPART(HOUR, @targetdatehour), DATEPART(MINUTE, @targetdatehour), 0, 0))
+      AND [server] = @serverValue
+      --and URL not like '%ALMGetUserDefaultDataCenter%' and URL not like '%ALMCheckDataCenter%'
+      GROUP BY DATEADD(HOUR, DATEDIFF(HOUR, 0, [RequestStartDateTime]), 0),
+               REVERSE(SUBSTRING(REVERSE(URL), CHARINDEX('?', REVERSE(URL)) + 1, CHARINDEX('/', REVERSE(URL)) - CHARINDEX('?', REVERSE(URL)) - 1))
+
+      ORDER BY [Created]
+
+    SELECT
+      @currentCount = COUNT(id)
+    FROM Test
+
+    IF (@currentCount = @previousCount)
+    BEGIN
+      SELECT
+        @targetdatehour = DATEADD(HOUR, 2, MAX(created)),
+        @nextdatehour = DATEADD(HOUR, 3, MAX(created))
+      FROM dbo.Test
+      WHERE MetricName = 'Availability'
+      AND ServerName = @serverValue
+	   IF DATEDIFF(DAY, @currentutcdate, @targetdatehour) >= 0	
+      BREAK
+    END
+    ELSE
+      SELECT
+        @targetdatehour = DATEADD(HOUR, 1, MAX(created)),
+        @nextdatehour = DATEADD(HOUR, 2, MAX(created))
+      FROM dbo.Test
+      WHERE MetricName = 'Availability'
+      AND ServerName = @serverValue
+	 IF DATEDIFF(DAY, @currentutcdate, @targetdatehour) >= 0	
+      BREAK
+  END
+
+  SET @pos = CHARINDEX(',', @serverList, @pos + @len) + 1
+  SET @targetdatehour = NULL
+  SET @currentsladate = NULL
+
+END
